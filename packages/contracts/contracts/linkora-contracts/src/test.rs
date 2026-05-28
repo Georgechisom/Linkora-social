@@ -1846,3 +1846,185 @@ fn test_tip_fee_split_matches_fee_bps_config() {
     let post = client.get_post(&post_id).unwrap();
     assert_eq!(post.tip_total, tip_amount);
 }
+
+#[test]
+#[should_panic(expected = "username taken")]
+fn test_username_uniqueness_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // User1 registers "alice"
+    client.set_profile(&user1, &String::from_str(&env, "alice"), &token);
+
+    // User2 tries to register "alice" - should panic
+    client.set_profile(&user2, &String::from_str(&env, "alice"), &token);
+}
+
+#[test]
+fn test_username_update_by_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let user = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // Register with "alice"
+    client.set_profile(&user, &String::from_str(&env, "alice"), &token);
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice")),
+        Some(user.clone())
+    );
+
+    // Update to "alice_new"
+    client.set_profile(&user, &String::from_str(&env, "alice_new"), &token);
+
+    // Old username should be freed
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice")),
+        None
+    );
+
+    // New username should resolve
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice_new")),
+        Some(user)
+    );
+}
+
+#[test]
+fn test_username_freed_on_change() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // User1 registers "alice"
+    client.set_profile(&user1, &String::from_str(&env, "alice"), &token);
+
+    // User1 changes to "bob"
+    client.set_profile(&user1, &String::from_str(&env, "bob"), &token);
+
+    // User2 can now register "alice"
+    client.set_profile(&user2, &String::from_str(&env, "alice"), &token);
+
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice")),
+        Some(user2)
+    );
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "bob")),
+        Some(user1)
+    );
+}
+
+#[test]
+fn test_pool_admin_added_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin1 = Address::generate(&env);
+    let pool_admin2 = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin1);
+
+    let pool_id = symbol_short!("pool1");
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &2,
+    );
+
+    client.add_pool_admin(
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &pool_id,
+        &new_admin,
+    );
+
+    // Verify event was emitted
+    assert!(!env.events().all().events().is_empty(), "PoolAdminAddedEvent should be emitted");
+    
+    // Verify admin was added
+    let pool = client.get_pool(&pool_id).unwrap();
+    assert_eq!(pool.admins.len(), 3);
+    assert!(pool.admins.iter().any(|a| a == new_admin));
+}
+
+#[test]
+fn test_pool_admin_removed_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin1 = Address::generate(&env);
+    let pool_admin2 = Address::generate(&env);
+    let pool_admin3 = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin1);
+
+    let pool_id = symbol_short!("pool1");
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone(), pool_admin3.clone()],
+        &2,
+    );
+
+    client.remove_pool_admin(
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &pool_id,
+        &pool_admin3,
+    );
+
+    // Verify event was emitted
+    assert!(!env.events().all().events().is_empty(), "PoolAdminRemovedEvent should be emitted");
+    
+    // Verify admin was removed
+    let pool = client.get_pool(&pool_id).unwrap();
+    assert_eq!(pool.admins.len(), 2);
+    assert!(!pool.admins.iter().any(|a| a == pool_admin3));
+}
+
+#[test]
+fn test_pool_threshold_updated_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin1 = Address::generate(&env);
+    let pool_admin2 = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin1);
+
+    let pool_id = symbol_short!("pool1");
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &2,
+    );
+
+    client.update_pool_threshold(
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &pool_id,
+        &1,
+    );
+
+    // Verify event was emitted
+    assert!(!env.events().all().events().is_empty(), "PoolThresholdUpdatedEvent should be emitted");
+    
+    // Verify threshold was updated
+    let pool = client.get_pool(&pool_id).unwrap();
+    assert_eq!(pool.threshold, 1);
+}

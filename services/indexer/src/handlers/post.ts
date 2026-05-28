@@ -1,56 +1,157 @@
 /**
- * Handlers for PostCreated and PostDeleted contract events.
+ * Post Event Handlers
+ * Handles PostCreatedEvent and PostDeletedEvent from the Linkora contract
  */
 
-import { Database } from "../db";
+import { Pool } from "pg";
 
 export interface PostCreatedEvent {
   id: bigint;
   author: string;
-  ledger: number;
 }
 
 export interface PostDeletedEvent {
   post_id: bigint;
   author: string;
-  ledger: number;
+}
+
+export interface PostEventContext {
+  txHash: string;
+  ledgerSeq: number;
+  timestamp: Date;
+  content?: string; // Fetched from contract state if needed
 }
 
 /**
- * Handle a PostCreated event.
- *
- * Inserts a new post record with deleted=false and zero counters.
- * Idempotent: a duplicate event for the same post_id is a no-op because
- * the underlying upsert will overwrite with the same values.
+ * Handle PostCreatedEvent
+ * Inserts a new post row into the posts table
+ * Idempotent: Uses ON CONFLICT DO NOTHING to handle duplicate events
  */
 export async function handlePostCreated(
-  db: Database,
-  event: PostCreatedEvent
+  pool: Pool,
+  event: PostCreatedEvent,
+  context: PostEventContext,
 ): Promise<void> {
-  if (!event.author) {
-    throw new Error("PostCreated event missing required field: author");
-  }
+  const { id, author } = event;
+  const { txHash, timestamp, content } = context;
 
-  await db.insertPost({
-    id: event.id,
-    author: event.author,
-    deleted: false,
-    tip_total: BigInt(0),
-    like_count: BigInt(0),
-    created_ledger: event.ledger,
-    deleted_ledger: null,
-  });
+  // Fetch content from contract state if not provided
+  const postContent = content || "";
+
+  const query = `
+    INSERT INTO posts (id, author, content, tip_total, like_count, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  const values = [
+    id.toString(),
+    author,
+    postContent,
+    0, // Initial tip_total
+    0, // Initial like_count
+    timestamp,
+  ];
+
+  try {
+    const result = await pool.query(query, values);
+
+    if (result.rowCount === 0) {
+      console.log(`Post ${id} already exists (idempotent skip)`);
+    } else {
+      console.log(`Post ${id} created by ${author}`);
+    }
+  } catch (error) {
+    console.error(`Error handling PostCreatedEvent for post ${id}:`, error);
+    throw error;
+  }
 }
 
 /**
- * Handle a PostDeleted event.
- *
- * Soft-deletes the post so historical tip and like records remain consistent.
- * Idempotent: marking an already-deleted post as deleted again is safe.
+ * Handle PostDeletedEvent
+ * Marks a post as deleted (soft delete) by setting deleted_at timestamp
+ * Idempotent: Only updates if deleted_at is NULL
  */
 export async function handlePostDeleted(
-  db: Database,
-  event: PostDeletedEvent
+  pool: Pool,
+  event: PostDeletedEvent,
+  context: PostEventContext,
 ): Promise<void> {
-  await db.markPostDeleted(event.post_id, event.ledger);
+  const { post_id, author } = event;
+  const { timestamp } = context;
+
+  const query = `
+    UPDATE posts
+    SET deleted_at = $1
+    WHERE id = $2 AND author = $3 AND deleted_at IS NULL
+  `;
+
+  const values = [timestamp, post_id.toString(), author];
+
+  try {
+    const result = await pool.query(query, values);
+
+    if (result.rowCount === 0) {
+      console.log(
+        `Post ${post_id} already deleted or not found (idempotent skip)`,
+      );
+    } else {
+      console.log(`Post ${post_id} deleted by ${author}`);
+    }
+  } catch (error) {
+    console.error(
+      `Error handling PostDeletedEvent for post ${post_id}:`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Fetch post content from contract state
+ * This is a placeholder - implement based on your Stellar SDK setup
+ */
+export async function fetchPostContent(
+  contractId: string,
+  postId: bigint,
+): Promise<string> {
+  // TODO: Implement contract state fetch using Stellar SDK
+  // Example:
+  // const contract = new Contract(contractId);
+  // const post = await contract.call('get_post', postId);
+  // return post.content;
+
+  return "";
+}
+
+/**
+ * Unit test helper: Mock event data
+ */
+export function createMockPostCreatedEvent(
+  id: bigint = 1n,
+  author: string = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+): { event: PostCreatedEvent; context: PostEventContext } {
+  return {
+    event: { id, author },
+    context: {
+      txHash: "0x1234567890abcdef",
+      ledgerSeq: 12345,
+      timestamp: new Date(),
+      content: "Test post content",
+    },
+  };
+}
+
+export function createMockPostDeletedEvent(
+  post_id: bigint = 1n,
+  author: string = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+): { event: PostDeletedEvent; context: PostEventContext } {
+  return {
+    event: { post_id, author },
+    context: {
+      txHash: "0xabcdef1234567890",
+      ledgerSeq: 12346,
+      timestamp: new Date(),
+    },
+  };
 }

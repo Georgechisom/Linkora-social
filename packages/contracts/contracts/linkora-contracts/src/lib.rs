@@ -242,6 +242,31 @@ pub struct ProposalExecutedEvent {
     pub recipient: Address,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct PoolAdminAddedEvent {
+    #[topic]
+    pub pool_id: Symbol,
+    pub new_admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct PoolAdminRemovedEvent {
+    #[topic]
+    pub pool_id: Symbol,
+    pub admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct PoolThresholdUpdatedEvent {
+    #[topic]
+    pub pool_id: Symbol,
+    pub old_threshold: u32,
+    pub new_threshold: u32,
+}
+
 // ── Contract ──────────────────────────────────────────────────────────────────
 
 #[contract]
@@ -892,9 +917,15 @@ impl LinkoraContract {
             "admin already exists"
         );
 
-        pool.admins.push_back(new_admin);
+        pool.admins.push_back(new_admin.clone());
         env.storage().persistent().set(&key, &pool);
         Self::bump(&env, &key);
+
+        PoolAdminAddedEvent {
+            pool_id,
+            new_admin,
+        }
+        .publish(&env);
     }
 
     pub fn remove_pool_admin(env: Env, signers: Vec<Address>, pool_id: Symbol, admin: Address) {
@@ -931,6 +962,12 @@ impl LinkoraContract {
 
         env.storage().persistent().set(&key, &pool);
         Self::bump(&env, &key);
+
+        PoolAdminRemovedEvent {
+            pool_id,
+            admin,
+        }
+        .publish(&env);
     }
 
     pub fn update_pool_threshold(env: Env, signers: Vec<Address>, pool_id: Symbol, threshold: u32) {
@@ -956,9 +993,17 @@ impl LinkoraContract {
             "threshold cannot exceed admin count"
         );
 
+        let old_threshold = pool.threshold;
         pool.threshold = threshold;
         env.storage().persistent().set(&key, &pool);
         Self::bump(&env, &key);
+
+        PoolThresholdUpdatedEvent {
+            pool_id,
+            old_threshold,
+            new_threshold: threshold,
+        }
+        .publish(&env);
     }
 
     // ── Fee & Treasury ────────────────────────────────────────────────────────
