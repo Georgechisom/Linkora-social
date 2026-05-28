@@ -28,6 +28,12 @@ The main contract in `packages/contracts/contracts/linkora-contracts` currently 
 
 These primitives provide a minimal base for experimenting with social-financial interactions on Soroban.
 
+## Documentation
+
+- **[System Architecture](./docs/ARCHITECTURE.md)** — High-level overview of system components, data flows, and technology choices
+- **[Design System](./docs/design/README.md)** — UI/UX specifications and brand identity
+- **[Indexer Design](./docs/indexer/INDEXER_DESIGN.md)** — Event indexing strategy and API design
+
 ## Repository Structure
 
 ```text
@@ -286,6 +292,10 @@ When contributing:
 ## Security
 
 Please review `SECURITY.md` for vulnerability disclosure guidance and scope.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to [conduct@linkora.social](mailto:conduct@linkora.social).
 
 ## Troubleshooting
 
