@@ -9,10 +9,25 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:integration": "pnpm --filter contracts test:integration",
-    "format": "turbo run format"
+    "format": "turbo run format",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10",
     "turbo": "latest"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx,json,md,yaml,yml}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "cargo fmt --check"
+    ]
   },
   "packageManager": "pnpm@9.15.9"
 }

@@ -34,6 +34,28 @@ cd Linkora-social
 pnpm install
 ```
 
+### Pre-commit Hooks
+
+This repository uses [Husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/lint-staged/lint-staged) to enforce code quality before every commit.
+
+After running `pnpm install`, Husky is installed automatically via the `prepare` script. No extra steps are required.
+
+**What runs on each commit:**
+
+| Files matched | Check |
+| --- | --- |
+| `*.ts`, `*.tsx` | `eslint --fix` then `prettier --write` |
+| `*.js`, `*.jsx`, `*.json`, `*.md`, `*.yaml`, `*.yml` | `prettier --write` |
+| `*.rs` | `cargo fmt --check` |
+
+If a staged file fails a lint check the commit is blocked. Fix the reported errors, re-stage the file, and commit again.
+
+To skip the hook in exceptional circumstances (not recommended):
+
+```bash
+git commit --no-verify -m "your message"
+```
+
 ### Building Contracts
 
 You can build the Soroban smart contracts from the repository root:
@@ -286,6 +308,34 @@ The `.github/CODEOWNERS` file maps directories to their maintainers:
 
 3. For urgent reviews or specific questions, you can also comment on the PR with a mention.
 
+## Dependency Updates
+
+Dependencies are kept current automatically by [Dependabot](https://docs.github.com/code-security/dependabot), configured in [`.github/dependabot.yml`](.github/dependabot.yml).
+
+### What is covered
+
+| Ecosystem | Locations |
+| --- | --- |
+| `npm` | repo root, `packages/web`, `packages/sdk`, `apps/web`, `apps/mobile`, `services/indexer` |
+| `cargo` | `packages/contracts` |
+| `github-actions` | `.github/workflows/` |
+
+> `apps/mobile` and `services/indexer` are listed ahead of their creation, so they start receiving updates as soon as a manifest is added.
+
+### How it works
+
+- **Weekly cadence:** Dependabot checks each ecosystem once a week and opens PRs for outdated dependencies.
+- **Grouped PRs:** updates are grouped per ecosystem (and split into production/development for npm) so reviewers see one PR instead of many, reducing noise.
+- **Auto-merge for patches:** the [`dependabot-auto-merge`](.github/workflows/dependabot-auto-merge.yml) workflow enables auto-merge for `semver-patch` updates. GitHub only merges them **after required CI checks pass** — a failing build keeps the PR open for manual review. Minor and major updates always require a manual review and merge.
+
+### Reviewing Dependabot PRs
+
+Treat Dependabot PRs like any other change: confirm CI is green, skim the changelog for the bumped dependency, and merge minor/major updates manually once you are confident they are safe.
+
 ## Security
 
 If you discover a security vulnerability, please review our [Security Policy](SECURITY.md) for responsible disclosure guidelines. Do not open public issues for security concerns.
+
+## Governance
+
+Project roles, decision-making processes, and the path to becoming a maintainer are described in [docs/GOVERNANCE.md](docs/GOVERNANCE.md).

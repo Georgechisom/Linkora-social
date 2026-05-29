@@ -191,8 +191,8 @@ pub struct PoolCreatedEvent {
     #[topic]
     pub pool_id: Symbol,
     pub token: Address,
+    pub admins: Vec<Address>,
     pub threshold: u32,
-    pub admin_count: u32,
 }
 
 #[contractevent]
@@ -250,6 +250,31 @@ pub struct ProposalExecutedEvent {
     pub proposal_id: u64,
     pub amount: i128,
     pub recipient: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct PoolAdminAddedEvent {
+    #[topic]
+    pub pool_id: Symbol,
+    pub new_admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct PoolAdminRemovedEvent {
+    #[topic]
+    pub pool_id: Symbol,
+    pub admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct PoolThresholdUpdatedEvent {
+    #[topic]
+    pub pool_id: Symbol,
+    pub old_threshold: u32,
+    pub new_threshold: u32,
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────────
@@ -493,7 +518,10 @@ impl LinkoraContract {
     }
 
     pub fn get_followers(env: Env, user: Address, offset: u32, limit: u32) -> Vec<Address> {
-        assert!(limit <= MAX_PAGE_LIMIT, "limit exceeded");
+        assert!(
+            limit > 0 && limit <= MAX_PAGE_LIMIT,
+            "limit must be between 1 and 50"
+        );
         let key = StorageKey::Followers(user);
         let list: Vec<Address> = env
             .storage()
@@ -762,13 +790,15 @@ impl LinkoraContract {
     ) {
         admin.require_auth();
         Self::require_admin(&env);
-        let admin_count = initial_admins.len();
         let key = StorageKey::Pool(pool_id.clone());
         assert!(!env.storage().persistent().has(&key), "pool exists");
         assert!(
             threshold > 0 && threshold <= initial_admins.len(),
             "invalid threshold"
         );
+
+        // Clone admins for event payload before moving into storage
+        let admins_for_event = initial_admins.clone();
         let token_copy = token.clone();
         env.storage().persistent().set(
             &key,
@@ -784,8 +814,8 @@ impl LinkoraContract {
         PoolCreatedEvent {
             pool_id,
             token: token_copy,
+            admins: admins_for_event,
             threshold,
-            admin_count,
         }
         .publish(&env);
     }
@@ -909,9 +939,15 @@ impl LinkoraContract {
             "admin already exists"
         );
 
-        pool.admins.push_back(new_admin);
+        pool.admins.push_back(new_admin.clone());
         env.storage().persistent().set(&key, &pool);
         Self::bump(&env, &key);
+
+        PoolAdminAddedEvent {
+            pool_id,
+            new_admin,
+        }
+        .publish(&env);
     }
 
     pub fn remove_pool_admin(env: Env, signers: Vec<Address>, pool_id: Symbol, admin: Address) {
@@ -948,6 +984,12 @@ impl LinkoraContract {
 
         env.storage().persistent().set(&key, &pool);
         Self::bump(&env, &key);
+
+        PoolAdminRemovedEvent {
+            pool_id,
+            admin,
+        }
+        .publish(&env);
     }
 
     pub fn update_pool_threshold(env: Env, signers: Vec<Address>, pool_id: Symbol, threshold: u32) {
@@ -973,9 +1015,17 @@ impl LinkoraContract {
             "threshold cannot exceed admin count"
         );
 
+        let old_threshold = pool.threshold;
         pool.threshold = threshold;
         env.storage().persistent().set(&key, &pool);
         Self::bump(&env, &key);
+
+        PoolThresholdUpdatedEvent {
+            pool_id,
+            old_threshold,
+            new_threshold: threshold,
+        }
+        .publish(&env);
     }
 
     // ── Fee & Treasury ────────────────────────────────────────────────────────

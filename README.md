@@ -28,6 +28,12 @@ The main contract in `packages/contracts/contracts/linkora-contracts` currently 
 
 These primitives provide a minimal base for experimenting with social-financial interactions on Soroban.
 
+## Documentation
+
+- **[System Architecture](./docs/ARCHITECTURE.md)** — High-level overview of system components, data flows, and technology choices
+- **[Design System](./docs/design/README.md)** — UI/UX specifications and brand identity
+- **[Indexer Design](./docs/indexer/INDEXER_DESIGN.md)** — Event indexing strategy and API design
+
 ## Repository Structure
 
 ```text
@@ -173,6 +179,18 @@ If your environment uses the older package naming, `soroban-cli` may also be val
 
 ## Getting Started
 
+### One-command setup
+
+The fastest way to get started is the setup script. It checks all prerequisites, installs JS dependencies, and builds the contracts:
+
+```bash
+./scripts/setup.sh
+```
+
+The script is idempotent — safe to run again after pulling new changes. It will print clear error messages for any missing tools and a next-steps summary on success.
+
+### Manual setup
+
 ### 1. Install JavaScript Workspace Dependencies
 
 ```bash
@@ -286,6 +304,10 @@ When contributing:
 ## Security
 
 Please review `SECURITY.md` for vulnerability disclosure guidance and scope.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to [conduct@linkora.social](mailto:conduct@linkora.social).
 
 ## Troubleshooting
 

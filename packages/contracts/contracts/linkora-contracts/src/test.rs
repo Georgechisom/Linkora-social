@@ -812,6 +812,44 @@ fn test_pool_deposit_wrong_token_rejected() {
 }
 
 #[test]
+fn test_pool_deposit_correct_token_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin = Address::generate(&env);
+    let other_user = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin);
+
+    // Give other_user some tokens to deposit
+    StellarAssetClient::new(&env, &token).mint(&other_user, &1000);
+
+    let pool_id = symbol_short!("pool5");
+    // Create pool with the matching token
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin.clone()],
+        &1,
+    );
+
+    // Pool starts empty
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 0);
+
+    // Depositing with the correct token succeeds
+    client.pool_deposit(&other_user, &pool_id, &token, &100);
+
+    // Pool balance is updated and tokens were transferred into the contract
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 100);
+    assert_eq!(TokenClient::new(&env, &token).balance(&other_user), 900);
+
+    // A second deposit accumulates on the existing balance
+    client.pool_deposit(&other_user, &pool_id, &token, &50);
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 150);
+}
+
+#[test]
 fn test_sequential_posts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -1234,4 +1272,783 @@ fn test_get_followers_bumps_followers_key() {
         !follows_exists,
         "get_followers must not create or bump the Following(alice) key"
     );
+}
+
+// ── Issue #346: get_following / get_followers pagination edge cases ───────────
+
+#[test]
+fn test_get_following_offset_beyond_list_length_returns_empty() {
+    // offset beyond list length must return an empty vec
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    client.follow(&alice, &bob);
+
+    // alice follows 1 person; offset=100 is way beyond the list
+    let page = client.get_following(&alice, &100, &10);
+    assert_eq!(
+        page.len(),
+        0,
+        "offset beyond list length must return empty vec"
+    );
+}
+
+#[test]
+fn test_get_following_limit_50_returns_at_most_50() {
+    // limit of 50 must return at most 50 results
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    // Follow 60 people
+    for _ in 0..60 {
+        let followee = Address::generate(&env);
+        client.follow(&alice, &followee);
+    }
+
+    let page = client.get_following(&alice, &0, &50);
+    assert!(page.len() <= 50, "limit=50 must return at most 50 results");
+    assert_eq!(page.len(), 50);
+}
+
+#[test]
+#[should_panic(expected = "limit must be between 1 and 50")]
+fn test_get_following_limit_51_panics() {
+    // limit of 51 must panic with "limit must be between 1 and 50"
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    client.follow(&alice, &bob);
+
+    client.get_following(&alice, &0, &51);
+}
+
+#[test]
+fn test_get_following_mid_list_offset_returns_correct_page() {
+    // correct page returned for a mid-list offset
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let mut followees = soroban_sdk::vec![&env];
+    for _ in 0..20 {
+        let f = Address::generate(&env);
+        followees.push_back(f.clone());
+        client.follow(&alice, &f);
+    }
+
+    // Request page starting at offset 10, limit 5
+    let page = client.get_following(&alice, &10, &5);
+    assert_eq!(page.len(), 5);
+    for i in 0..5u32 {
+        assert_eq!(
+            page.get(i).unwrap(),
+            followees.get(10 + i).unwrap(),
+            "mid-list page item {} mismatch",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_get_followers_offset_beyond_list_length_returns_empty() {
+    // offset beyond list length must return an empty vec
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    client.follow(&bob, &alice); // bob follows alice → alice has 1 follower
+
+    let page = client.get_followers(&alice, &100, &10);
+    assert_eq!(
+        page.len(),
+        0,
+        "offset beyond list length must return empty vec"
+    );
+}
+
+#[test]
+fn test_get_followers_limit_50_returns_at_most_50() {
+    // limit of 50 must return at most 50 results
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    // 60 people follow alice
+    for _ in 0..60 {
+        let follower = Address::generate(&env);
+        client.follow(&follower, &alice);
+    }
+
+    let page = client.get_followers(&alice, &0, &50);
+    assert!(page.len() <= 50, "limit=50 must return at most 50 results");
+    assert_eq!(page.len(), 50);
+}
+
+#[test]
+#[should_panic(expected = "limit must be between 1 and 50")]
+fn test_get_followers_limit_51_panics() {
+    // limit of 51 must panic with "limit must be between 1 and 50"
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    client.follow(&bob, &alice);
+
+    client.get_followers(&alice, &0, &51);
+}
+
+#[test]
+fn test_get_followers_mid_list_offset_returns_correct_page() {
+    // correct page returned for a mid-list offset
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let alice = Address::generate(&env);
+    let mut followers = soroban_sdk::vec![&env];
+    for _ in 0..20 {
+        let f = Address::generate(&env);
+        followers.push_back(f.clone());
+        client.follow(&f, &alice);
+    }
+
+    // Request page starting at offset 10, limit 5
+    let page = client.get_followers(&alice, &10, &5);
+    assert_eq!(page.len(), 5);
+    for i in 0..5u32 {
+        assert_eq!(
+            page.get(i).unwrap(),
+            followers.get(10 + i).unwrap(),
+            "mid-list page item {} mismatch",
+            i
+        );
+    }
+}
+
+// ── Issue #345: create_post content length fuzz / boundary tests ──────────────
+
+#[test]
+fn test_create_post_content_1_char_succeeds() {
+    // content of 1 character must succeed
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let author = Address::generate(&env);
+    let post_id = client.create_post(&author, &String::from_str(&env, "x"));
+    let post = client.get_post(&post_id).unwrap();
+    assert_eq!(post.content, String::from_str(&env, "x"));
+    assert_eq!(post.author, author);
+}
+
+#[test]
+fn test_create_post_content_280_chars_succeeds() {
+    // content of exactly 280 characters must succeed
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let author = Address::generate(&env);
+    let content_str = "a".repeat(280);
+    let content = String::from_str(&env, &content_str);
+    assert_eq!(content.len(), 280);
+
+    let post_id = client.create_post(&author, &content);
+    let post = client.get_post(&post_id).unwrap();
+    assert_eq!(post.content.len(), 280);
+}
+
+#[test]
+#[should_panic(expected = "empty content")]
+fn test_create_post_empty_content_panics() {
+    // empty content must panic with a descriptive error
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let author = Address::generate(&env);
+    client.create_post(&author, &String::from_str(&env, ""));
+}
+
+#[test]
+#[should_panic(expected = "content too long")]
+fn test_create_post_content_281_chars_panics() {
+    // content of 281 characters must panic with a descriptive error
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let author = Address::generate(&env);
+    let content_str = "a".repeat(281);
+    let content = String::from_str(&env, &content_str);
+    assert_eq!(content.len(), 281);
+    client.create_post(&author, &content);
+}
+
+// ── Pool withdrawal M-of-N integration tests ─────────────────────────────────
+
+/// Helper: create a pool with `n` admins and threshold `m`, deposit `balance`,
+/// and return (client, admin, pool_id, token, pool_admins).
+fn setup_pool<'a>(
+    env: &'a Env,
+    n: usize,
+    m: u32,
+    balance: i128,
+) -> (
+    LinkoraContractClient<'a>,
+    Address,
+    soroban_sdk::Symbol,
+    Address,
+    Vec<Address>,
+) {
+    let (client, admin, _) = setup_contract(env);
+
+    let mut pool_admins = Vec::new(env);
+    let token_owner = Address::generate(env);
+    let token = setup_token(env, &token_owner);
+
+    for _ in 0..n {
+        pool_admins.push_back(Address::generate(env));
+    }
+
+    let depositor = Address::generate(env);
+    StellarAssetClient::new(env, &token).mint(&depositor, &(balance + 1000));
+
+    let pool_id = symbol_short!("tpool");
+    client.create_pool(&admin, &pool_id, &token, &pool_admins, &m);
+
+    if balance > 0 {
+        client.pool_deposit(&depositor, &pool_id, &token, &balance);
+    }
+
+    (client, admin, pool_id, token, pool_admins)
+}
+
+#[test]
+fn test_pool_withdraw_exactly_threshold_2_of_3_succeeds() {
+    // 2-of-3: exactly the threshold number of admins (M < N) authorises a withdrawal.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, token, admins) = setup_pool(&env, 3, 2, 300);
+    let recipient = Address::generate(&env);
+
+    // Sign with exactly 2 of the 3 admins.
+    let signers = vec![&env, admins.get(0).unwrap(), admins.get(1).unwrap()];
+    client.pool_withdraw(&signers, &pool_id, &100, &recipient);
+
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 200);
+    // Recipient must have received the tokens.
+    assert_eq!(TokenClient::new(&env, &token).balance(&recipient), 100);
+}
+
+#[test]
+fn test_pool_withdraw_superset_of_threshold_also_succeeds() {
+    // Having more signers than the threshold is always acceptable.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, token, admins) = setup_pool(&env, 5, 3, 500);
+    let recipient = Address::generate(&env);
+
+    // All 5 admins sign, threshold is only 3.
+    client.pool_withdraw(&admins, &pool_id, &200, &recipient);
+
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 300);
+    assert_eq!(TokenClient::new(&env, &token).balance(&recipient), 200);
+}
+
+#[test]
+fn test_pool_withdraw_3_of_5_threshold_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, token, admins) = setup_pool(&env, 5, 3, 600);
+    let recipient = Address::generate(&env);
+
+    let signers = vec![
+        &env,
+        admins.get(0).unwrap(),
+        admins.get(2).unwrap(),
+        admins.get(4).unwrap(),
+    ];
+    client.pool_withdraw(&signers, &pool_id, &150, &recipient);
+
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 450);
+    assert_eq!(TokenClient::new(&env, &token).balance(&recipient), 150);
+}
+
+#[test]
+fn test_pool_withdraw_sequential_withdrawals_maintain_balance() {
+    // Multiple sequential withdrawals reduce the balance correctly.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, token, admins) = setup_pool(&env, 3, 2, 1000);
+    let recipient = Address::generate(&env);
+
+    let signers = vec![&env, admins.get(0).unwrap(), admins.get(1).unwrap()];
+
+    client.pool_withdraw(&signers, &pool_id, &300, &recipient);
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 700);
+
+    client.pool_withdraw(&signers, &pool_id, &200, &recipient);
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 500);
+
+    client.pool_withdraw(&signers, &pool_id, &500, &recipient);
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 0);
+
+    assert_eq!(TokenClient::new(&env, &token).balance(&recipient), 1000);
+}
+
+#[test]
+fn test_pool_withdraw_exact_full_balance_succeeds() {
+    // Withdrawing the entire pool balance (boundary case) must succeed.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, token, admins) = setup_pool(&env, 2, 2, 250);
+    let recipient = Address::generate(&env);
+
+    let signers = vec![&env, admins.get(0).unwrap(), admins.get(1).unwrap()];
+    client.pool_withdraw(&signers, &pool_id, &250, &recipient);
+
+    assert_eq!(client.get_pool(&pool_id).unwrap().balance, 0);
+    assert_eq!(TokenClient::new(&env, &token).balance(&recipient), 250);
+}
+
+#[test]
+fn test_pool_withdraw_event_emitted() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, _, admins) = setup_pool(&env, 2, 2, 400);
+    let recipient = Address::generate(&env);
+
+    let signers = vec![&env, admins.get(0).unwrap(), admins.get(1).unwrap()];
+    client.pool_withdraw(&signers, &pool_id, &100, &recipient);
+
+    let all_events = env.events().all();
+    // At least one event must have been emitted after the withdrawal.
+    assert!(
+        !all_events.events().is_empty(),
+        "withdrawal must emit at least one event"
+    );
+}
+
+#[test]
+#[should_panic(expected = "insufficient signers")]
+fn test_pool_withdraw_m_of_n_fewer_than_threshold_rejected() {
+    // With a 3-of-5 threshold, providing only 2 signers must fail.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, _, admins) = setup_pool(&env, 5, 3, 300);
+    let recipient = Address::generate(&env);
+
+    let signers = vec![&env, admins.get(0).unwrap(), admins.get(1).unwrap()];
+    client.pool_withdraw(&signers, &pool_id, &100, &recipient);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized signer")]
+fn test_pool_withdraw_m_of_n_non_admin_rejected() {
+    // Even if the count meets the threshold, a non-admin signer causes rejection.
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, _, admins) = setup_pool(&env, 3, 2, 300);
+    let recipient = Address::generate(&env);
+
+    let outsider = Address::generate(&env);
+    let signers = vec![&env, admins.get(0).unwrap(), outsider];
+    client.pool_withdraw(&signers, &pool_id, &100, &recipient);
+}
+
+#[test]
+#[should_panic(expected = "low balance")]
+fn test_pool_withdraw_m_of_n_exceeds_balance_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, pool_id, _, admins) = setup_pool(&env, 3, 2, 100);
+    let recipient = Address::generate(&env);
+
+    let signers = vec![&env, admins.get(0).unwrap(), admins.get(1).unwrap()];
+    client.pool_withdraw(&signers, &pool_id, &101, &recipient);
+}
+
+// ── Issue #343: full tip flow integration tests ───────────────────────────────
+
+#[test]
+fn test_tip_full_flow_no_fee() {
+    // fee_bps = 0: entire tip goes to author, treasury receives nothing
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let author = Address::generate(&env);
+    let tipper = Address::generate(&env);
+
+    // Initialize with fee_bps = 0 (no fee)
+    client.initialize(&admin, &treasury, &0);
+
+    let token = setup_token(&env, &tipper);
+    let post_id = client.create_post(&author, &String::from_str(&env, "No-fee tip test"));
+
+    let tip_amount: i128 = 1000;
+    client.tip(&tipper, &post_id, &token, &tip_amount);
+
+    // With fee_bps = 0: fee = 0, author gets full amount
+    let author_balance = TokenClient::new(&env, &token).balance(&author);
+    let treasury_balance = TokenClient::new(&env, &token).balance(&treasury);
+
+    assert_eq!(
+        author_balance, tip_amount,
+        "author must receive full tip when fee_bps=0"
+    );
+    assert_eq!(
+        treasury_balance, 0,
+        "treasury must receive nothing when fee_bps=0"
+    );
+
+    // tip_total on the post must be incremented correctly
+    let post = client.get_post(&post_id).unwrap();
+    assert_eq!(
+        post.tip_total, tip_amount,
+        "tip_total must equal the gross tip amount"
+    );
+}
+
+#[test]
+fn test_tip_full_flow_with_5_percent_fee() {
+    // fee_bps = 500 (5%): verify author and treasury balances and tip_total
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let author = Address::generate(&env);
+    let tipper = Address::generate(&env);
+
+    // Initialize with fee_bps = 500 (5%)
+    client.initialize(&admin, &treasury, &500);
+
+    let token = setup_token(&env, &tipper);
+    let post_id = client.create_post(&author, &String::from_str(&env, "5% fee tip test"));
+
+    let tip_amount: i128 = 1000;
+    client.tip(&tipper, &post_id, &token, &tip_amount);
+
+    // fee = 1000 * 500 / 10_000 = 50
+    // author gets 1000 - 50 = 950
+    let expected_fee: i128 = 50;
+    let expected_author: i128 = 950;
+
+    let author_balance = TokenClient::new(&env, &token).balance(&author);
+    let treasury_balance = TokenClient::new(&env, &token).balance(&treasury);
+
+    assert_eq!(
+        treasury_balance, expected_fee,
+        "treasury must receive fee = tip * fee_bps / 10_000"
+    );
+    assert_eq!(
+        author_balance, expected_author,
+        "author must receive tip minus fee"
+    );
+
+    // tip_total must reflect the gross tip amount
+    let post = client.get_post(&post_id).unwrap();
+    assert_eq!(
+        post.tip_total, tip_amount,
+        "tip_total must equal the gross tip amount regardless of fee"
+    );
+}
+
+#[test]
+fn test_tip_total_increments_across_multiple_tips() {
+    // tip_total accumulates correctly across multiple tips
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let author = Address::generate(&env);
+    let tipper1 = Address::generate(&env);
+    let tipper2 = Address::generate(&env);
+
+    client.initialize(&admin, &treasury, &500);
+
+    let token = setup_token(&env, &tipper1);
+    // Mint tokens for tipper2 as well
+    StellarAssetClient::new(&env, &token).mint(&tipper2, &5000);
+
+    let post_id = client.create_post(&author, &String::from_str(&env, "Multi-tip test"));
+
+    // First tip from tipper1 (advance ledger to bypass cooldown)
+    client.tip(&tipper1, &post_id, &token, &400);
+
+    // Second tip from tipper2 (different tipper, no cooldown issue)
+    client.tip(&tipper2, &post_id, &token, &600);
+
+    let post = client.get_post(&post_id).unwrap();
+    assert_eq!(
+        post.tip_total, 1000,
+        "tip_total must be the sum of all gross tips"
+    );
+}
+
+#[test]
+fn test_tip_fee_split_matches_fee_bps_config() {
+    // fee split must match fee_bps configuration precisely
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(LinkoraContract, ());
+    let client = LinkoraContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let author = Address::generate(&env);
+    let tipper = Address::generate(&env);
+
+    // Use 250 bps (2.5%)
+    client.initialize(&admin, &treasury, &250);
+
+    let token = setup_token(&env, &tipper);
+    let post_id = client.create_post(&author, &String::from_str(&env, "Fee split config test"));
+
+    let tip_amount: i128 = 2000;
+    client.tip(&tipper, &post_id, &token, &tip_amount);
+
+    // fee = 2000 * 250 / 10_000 = 50
+    // author gets 2000 - 50 = 1950
+    let expected_fee: i128 = 50;
+    let expected_author: i128 = 1950;
+
+    assert_eq!(
+        TokenClient::new(&env, &token).balance(&treasury),
+        expected_fee
+    );
+    assert_eq!(
+        TokenClient::new(&env, &token).balance(&author),
+        expected_author
+    );
+
+    let post = client.get_post(&post_id).unwrap();
+    assert_eq!(post.tip_total, tip_amount);
+}
+
+#[test]
+#[should_panic(expected = "username taken")]
+fn test_username_uniqueness_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // User1 registers "alice"
+    client.set_profile(&user1, &String::from_str(&env, "alice"), &token);
+
+    // User2 tries to register "alice" - should panic
+    client.set_profile(&user2, &String::from_str(&env, "alice"), &token);
+}
+
+#[test]
+fn test_username_update_by_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let user = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // Register with "alice"
+    client.set_profile(&user, &String::from_str(&env, "alice"), &token);
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice")),
+        Some(user.clone())
+    );
+
+    // Update to "alice_new"
+    client.set_profile(&user, &String::from_str(&env, "alice_new"), &token);
+
+    // Old username should be freed
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice")),
+        None
+    );
+
+    // New username should resolve
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice_new")),
+        Some(user)
+    );
+}
+
+#[test]
+fn test_username_freed_on_change() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, _) = setup_contract(&env);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // User1 registers "alice"
+    client.set_profile(&user1, &String::from_str(&env, "alice"), &token);
+
+    // User1 changes to "bob"
+    client.set_profile(&user1, &String::from_str(&env, "bob"), &token);
+
+    // User2 can now register "alice"
+    client.set_profile(&user2, &String::from_str(&env, "alice"), &token);
+
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "alice")),
+        Some(user2)
+    );
+    assert_eq!(
+        client.get_address_by_username(&String::from_str(&env, "bob")),
+        Some(user1)
+    );
+}
+
+#[test]
+fn test_pool_admin_added_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin1 = Address::generate(&env);
+    let pool_admin2 = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin1);
+
+    let pool_id = symbol_short!("pool1");
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &2,
+    );
+
+    client.add_pool_admin(
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &pool_id,
+        &new_admin,
+    );
+
+    // Verify event was emitted
+    assert!(!env.events().all().events().is_empty(), "PoolAdminAddedEvent should be emitted");
+    
+    // Verify admin was added
+    let pool = client.get_pool(&pool_id).unwrap();
+    assert_eq!(pool.admins.len(), 3);
+    assert!(pool.admins.iter().any(|a| a == new_admin));
+}
+
+#[test]
+fn test_pool_admin_removed_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin1 = Address::generate(&env);
+    let pool_admin2 = Address::generate(&env);
+    let pool_admin3 = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin1);
+
+    let pool_id = symbol_short!("pool1");
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone(), pool_admin3.clone()],
+        &2,
+    );
+
+    client.remove_pool_admin(
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &pool_id,
+        &pool_admin3,
+    );
+
+    // Verify event was emitted
+    assert!(!env.events().all().events().is_empty(), "PoolAdminRemovedEvent should be emitted");
+    
+    // Verify admin was removed
+    let pool = client.get_pool(&pool_id).unwrap();
+    assert_eq!(pool.admins.len(), 2);
+    assert!(!pool.admins.iter().any(|a| a == pool_admin3));
+}
+
+#[test]
+fn test_pool_threshold_updated_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _) = setup_contract(&env);
+
+    let pool_admin1 = Address::generate(&env);
+    let pool_admin2 = Address::generate(&env);
+    let token = setup_token(&env, &pool_admin1);
+
+    let pool_id = symbol_short!("pool1");
+    client.create_pool(
+        &admin,
+        &pool_id,
+        &token,
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &2,
+    );
+
+    client.update_pool_threshold(
+        &vec![&env, pool_admin1.clone(), pool_admin2.clone()],
+        &pool_id,
+        &1,
+    );
+
+    // Verify event was emitted
+    assert!(!env.events().all().events().is_empty(), "PoolThresholdUpdatedEvent should be emitted");
+    
+    // Verify threshold was updated
+    let pool = client.get_pool(&pool_id).unwrap();
+    assert_eq!(pool.threshold, 1);
 }
