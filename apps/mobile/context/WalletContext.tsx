@@ -44,8 +44,11 @@ interface WalletConnectLike {
   disconnect: () => Promise<void>;
   getPublicKey?: () => Promise<string>;
   isConnected?: () => Promise<boolean>;
-  signTransaction?: (payload: { txXdr: string }) => Promise<any>;
-  signAndSubmitTransaction?: (payload: { txXdr: string; rpcUrl?: string }) => Promise<any>;
+  signTransaction?: (payload: { txXdr: string }) => Promise<{ signedTxXdr: string }>;
+  signAndSubmitTransaction?: (payload: {
+    txXdr: string;
+    rpcUrl?: string;
+  }) => Promise<{ hash?: string; txHash?: string }>;
 }
 
 async function createWalletConnectAdapter(): Promise<WalletConnectLike> {
@@ -128,10 +131,10 @@ async function createWalletConnectAdapter(): Promise<WalletConnectLike> {
           method: "stellar_signXDR",
           params: { txXdr },
         },
-      } as any;
+      } as Parameters<typeof client.request>[0];
 
       const res = await client.request(request);
-      return res;
+      return res as { signedTxXdr: string };
     },
 
     async signAndSubmitTransaction({ txXdr, rpcUrl }: { txXdr: string; rpcUrl?: string }) {
@@ -171,10 +174,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const { network: selectedNetwork } = useNetworkContext();
   const [state, setState] = useState<WalletState>("loading");
   const [network, setNetwork] = useState<WalletNetwork>("TESTNET");
-  const [wallet, setWallet] = useState<WalletInfo>({ address: null, network: null, provider: null });
+  const [wallet, setWallet] = useState<WalletInfo>({
+    address: null,
+    network: null,
+    provider: null,
+  });
   const [error, setError] = useState<string | null>(null);
 
-  const [walletKit, setWalletKit] = useState<WalletConnectLike | null>(() => globalThis.__LINKORA_WALLET_KIT__ ?? null);
+  const [walletKit, setWalletKit] = useState<WalletConnectLike | null>(
+    () => globalThis.__LINKORA_WALLET_KIT__ ?? null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -210,7 +219,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
   const importFreighterApi = useCallback(async () => {
     const loader = new Function("specifier", "return import(specifier)") as (
-      specifier: string,
+      specifier: string
     ) => Promise<Record<string, unknown>>;
     return loader("@stellar/freighter-api");
   }, []);
@@ -218,14 +227,20 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const requestFreighterAddress = useCallback(async (): Promise<string> => {
     const freighter = await importFreighterApi();
 
-    const available = typeof freighter.isConnected === "function" ? await freighter.isConnected() : true;
+    const available =
+      typeof freighter.isConnected === "function" ? await freighter.isConnected() : true;
 
     if (!available) throw new Error("Freighter is not available");
 
     if (typeof freighter.requestAccess === "function") {
       const result = await freighter.requestAccess();
       if (typeof result === "string") return result;
-      if (result && typeof result === "object" && "address" in result && typeof result.address === "string") {
+      if (
+        result &&
+        typeof result === "object" &&
+        "address" in result &&
+        typeof result.address === "string"
+      ) {
         return result.address;
       }
     }
@@ -238,7 +253,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     if (typeof freighter.getAddress === "function") {
       const result = await freighter.getAddress();
       if (typeof result === "string") return result;
-      if (result && typeof result === "object" && "address" in result && typeof result.address === "string") {
+      if (
+        result &&
+        typeof result === "object" &&
+        "address" in result &&
+        typeof result.address === "string"
+      ) {
         return result.address;
       }
     }
@@ -257,13 +277,21 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       const storedConn = await getConnectionState();
 
       if (storedAddress && storedConn) {
-        const isConnected: boolean = walletKit.isConnected ? await walletKit.isConnected() : Boolean(storedAddress);
+        const isConnected: boolean = walletKit.isConnected
+          ? await walletKit.isConnected()
+          : Boolean(storedAddress);
 
         if (isConnected) {
-          const currentAddress: string = walletKit.getPublicKey ? await walletKit.getPublicKey() : storedAddress;
+          const currentAddress: string = walletKit.getPublicKey
+            ? await walletKit.getPublicKey()
+            : storedAddress;
 
           if (currentAddress === storedAddress) {
-            setWallet({ address: currentAddress, network: selectedNetwork.id, provider: "walletconnect" });
+            setWallet({
+              address: currentAddress,
+              network: selectedNetwork.id,
+              provider: "walletconnect",
+            });
             setState("connected");
             return;
           }
@@ -297,7 +325,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         } else {
           if (!walletKit) throw new Error("WalletConnect is not available");
 
-          const result: { publicKey?: string; address?: string } = await walletKit.connect(selectedNetwork);
+          const result: { publicKey?: string; address?: string } =
+            await walletKit.connect(selectedNetwork);
           address = result.publicKey ?? result.address ?? null;
 
           if (typeof walletKit.getPublicKey === "function") {
@@ -307,7 +336,11 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
         if (!address) throw new Error("No address returned from wallet");
 
-        const connState: StoredConnectionState = { connected: true, address, timestamp: Date.now() };
+        const connState: StoredConnectionState = {
+          connected: true,
+          address,
+          timestamp: Date.now(),
+        };
         await Promise.all([setWalletAddress(address), setConnectionState(connState)]);
 
         setWallet({ address, network: selectedNetwork.id, provider });
@@ -318,7 +351,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         setWallet({ address: null, network: null, provider: null });
       }
     },
-    [requestFreighterAddress, selectedNetwork, walletKit],
+    [requestFreighterAddress, selectedNetwork, walletKit]
   );
 
   const disconnect = useCallback(async () => {
@@ -344,7 +377,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     }
   }, [selectedNetwork.id, wallet.address]);
 
-  const value: WalletContextType = { state, wallet, network, error, connect, disconnect, refresh, setNetwork };
+  const value: WalletContextType = {
+    state,
+    wallet,
+    network,
+    error,
+    connect,
+    disconnect,
+    refresh,
+    setNetwork,
+  };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

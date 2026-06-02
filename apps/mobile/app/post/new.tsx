@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import React, { useMemo, useState, useCallback } from "react";
 import {
   ActivityIndicator,
@@ -27,7 +27,7 @@ const MAX_CHARS = 280;
  * Stub for the real contract call.
  * Replace with `LinkoraClient.createPost(author, content)` once the SDK is wired.
  */
-async function submitCreatePost(author: string, content: string): Promise<string> {
+async function submitCreatePost(_author: string, _content: string): Promise<string> {
   // TODO: replace with real SDK call, e.g.:
   // const client = new LinkoraClient({ contractId: CONTRACT_ID, rpcUrl: RPC_URL });
   // const postId = await client.createPost(author, content);
@@ -115,10 +115,7 @@ export default function CreatePostScreen() {
 
           {/* Text input */}
           <TextInput
-            style={[
-              styles.input,
-              overLimit && styles.inputError,
-            ]}
+            style={[styles.input, overLimit && styles.inputError]}
             value={content}
             onChangeText={setContent}
             placeholder="What's on your mind?"

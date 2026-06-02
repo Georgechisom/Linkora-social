@@ -51,7 +51,7 @@ export function useProfile(address: string) {
               username: p.username ?? null,
               bio: (p.bio as string) ?? null,
             }
-          : null,
+          : null
       );
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -87,7 +87,15 @@ export function useProfile(address: string) {
 
     try {
       // Try to use an injected wallet kit that can sign/submit
-      const kit = (globalThis as any).__LINKORA_WALLET_KIT__;
+      const kit = (
+        globalThis as unknown as {
+          __LINKORA_WALLET_KIT__?: {
+            signAndSubmitTransaction: (opts: {
+              txXdr: string;
+            }) => Promise<{ hash?: string; txHash?: string }>;
+          };
+        }
+      ).__LINKORA_WALLET_KIT__;
 
       if (kit && typeof kit.signAndSubmitTransaction === "function") {
         const res = await kit.signAndSubmitTransaction({ txXdr });
@@ -115,7 +123,18 @@ export function useProfile(address: string) {
       const msg = err instanceof Error ? err.message : "Failed to submit transaction";
       showError(msg);
     }
-  }, [address, me, isFollowing, rpcUrl, showError, showPending, showSuccess, followers, following, myFollowing]);
+  }, [
+    address,
+    me,
+    isFollowing,
+    rpcUrl,
+    showError,
+    showPending,
+    showSuccess,
+    followers,
+    following,
+    myFollowing,
+  ]);
 
   const refresh = useCallback(() => {
     fetchProfile();

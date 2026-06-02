@@ -49,7 +49,7 @@ describe("useWallet", () => {
   afterEach(() => {
     cleanup();
     jest.clearAllMocks();
-    delete (window as any).freighterApi;
+    delete (window as unknown as Record<string, unknown>).freighterApi;
   });
 
   describe("initial state", () => {
@@ -109,7 +109,7 @@ describe("useWallet", () => {
         () =>
           new Promise((resolve) => {
             setTimeout(() => resolve({ publicKey }), 100);
-          }),
+          })
       );
 
       const { result } = renderHook(() => useWallet(), {
@@ -125,7 +125,7 @@ describe("useWallet", () => {
     });
 
     it("should handle connection error when Freighter is not installed", async () => {
-      delete (window as any).freighterApi;
+      delete (window as unknown as Record<string, unknown>).freighterApi;
 
       const { result } = renderHook(() => useWallet(), {
         wrapper: WalletProvider,

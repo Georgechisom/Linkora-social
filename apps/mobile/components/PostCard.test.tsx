@@ -5,6 +5,23 @@ import { PostCard, Post } from "./PostCard";
 import { useRouter } from "expo-router";
 
 jest.mock("expo-router", () => ({ useRouter: jest.fn(() => ({ push: jest.fn() })) }));
+jest.mock("../context/WalletContext", () => ({
+  useWalletContext: () => ({
+    wallet: { address: null },
+    network: null,
+    state: "disconnected",
+    error: null,
+    connect: jest.fn(),
+    disconnect: jest.fn(),
+    refresh: jest.fn(),
+    setNetwork: jest.fn(),
+  }),
+  WalletProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+jest.mock("../context/ToastContext", () => ({
+  useToast: () => ({ showSuccess: jest.fn(), showError: jest.fn() }),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 
 describe("PostCard", () => {
   const defaultPost: Post = {
@@ -22,14 +39,14 @@ describe("PostCard", () => {
       const { getByText } = render(<PostCard post={defaultPost} />);
       expect(getByText(defaultPost.username)).toBeTruthy();
       expect(getByText(defaultPost.content)).toBeTruthy();
-      expect(getByText("♥ 42")).toBeTruthy();
-      expect(getByText("◎ 100")).toBeTruthy();
+      expect(getByText(/42/)).toBeTruthy();
+      expect(getByText(/100/)).toBeTruthy();
     });
 
     it("renders with zero likes correctly", () => {
       const post = { ...defaultPost, like_count: 0 };
       const { getByText } = render(<PostCard post={post} />);
-      expect(getByText("♥ 0")).toBeTruthy();
+      expect(getByText(/Like.*0|0.*Like/)).toBeTruthy();
     });
 
     it("renders with long content correctly", () => {
@@ -56,10 +73,12 @@ describe("PostCard", () => {
 
   describe("Accessibility", () => {
     it("has accessible button role and label", () => {
-      const { getByRole } = render(<PostCard post={defaultPost} />);
-      const button = getByRole("button");
-      expect(button).toBeTruthy();
-      expect(button.props.accessibilityLabel).toBe(`Post by ${defaultPost.username}`);
+      const { getAllByRole } = render(<PostCard post={defaultPost} />);
+      const buttons = getAllByRole("button");
+      const card = buttons.find(
+        (b) => b.props.accessibilityLabel === `Post by ${defaultPost.username}`
+      );
+      expect(card).toBeTruthy();
     });
 
     it("avatar has minimum 44x44 touch target", () => {
@@ -71,9 +90,11 @@ describe("PostCard", () => {
   describe("Interaction", () => {
     it("calls onPress when tapped", () => {
       const onPress = jest.fn();
-      const { getByRole } = render(<PostCard post={defaultPost} onPress={onPress} />);
-      const button = getByRole("button");
-      fireEvent.press(button);
+      const { getAllByRole } = render(<PostCard post={defaultPost} onPress={onPress} />);
+      const card = getAllByRole("button").find(
+        (b) => b.props.accessibilityLabel === `Post by ${defaultPost.username}`
+      );
+      fireEvent.press(card!);
       expect(onPress).toHaveBeenCalled();
     });
 
@@ -81,9 +102,11 @@ describe("PostCard", () => {
       const mockPush = jest.fn();
       (useRouter as jest.Mock).mockReturnValue({ push: mockPush });
 
-      const { getByRole } = render(<PostCard post={defaultPost} />);
-      const button = getByRole("button");
-      fireEvent.press(button);
+      const { getAllByRole } = render(<PostCard post={defaultPost} />);
+      const card = getAllByRole("button").find(
+        (b) => b.props.accessibilityLabel === `Post by ${defaultPost.username}`
+      );
+      fireEvent.press(card!);
       expect(mockPush).toHaveBeenCalledWith(`/post/${defaultPost.id}`);
     });
   });

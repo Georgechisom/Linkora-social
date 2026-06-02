@@ -48,7 +48,7 @@ export default function MiniAppHostScreen() {
     return createMiniAppBridge({
       permissions: app.permissions,
       handlers: {
-        "post.create": async (payload) => {
+        "post.create": async (_payload) => {
           const requestId = Date.now().toString(36) + Math.random().toString(36).slice(2);
           const promise = registerPendingRequest(requestId);
           router.push(`/mini-app/create-post?requestId=${requestId}`);

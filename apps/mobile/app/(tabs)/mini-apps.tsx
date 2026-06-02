@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Alert, FlatList, StyleSheet, View } from "react-native";
+import { Alert, FlatList, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 
 import { MiniAppIcon, MiniApp } from "../../components/MiniAppIcon";
@@ -23,20 +23,16 @@ export default function MiniAppsScreen() {
 
   const handleLongPress = useCallback(
     (app: MiniApp) => {
-      Alert.alert(
-        `Uninstall ${app.name}?`,
-        "This will remove the mini app from your launcher.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Uninstall",
-            style: "destructive",
-            onPress: () => uninstall(app.id),
-          },
-        ],
-      );
+      Alert.alert(`Uninstall ${app.name}?`, "This will remove the mini app from your launcher.", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Uninstall",
+          style: "destructive",
+          onPress: () => uninstall(app.id),
+        },
+      ]);
     },
-    [uninstall],
+    [uninstall]
   );
 
   return (

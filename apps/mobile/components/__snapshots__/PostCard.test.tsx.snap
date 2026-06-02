@@ -133,32 +133,88 @@ exports[`PostCard Accessibility avatar has minimum 44x44 touch target 1`] = `
   <View
     style={
       {
+        "alignItems": "center",
         "flexDirection": "row",
         "gap": 16,
         "marginTop": 12,
       }
     }
   >
+    <View
+      accessibilityLabel="Like post"
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": false,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderColor": "#E5E7EB",
+            "borderRadius": 999,
+            "borderWidth": 1,
+            "justifyContent": "center",
+            "minHeight": 32,
+            "paddingHorizontal": 12,
+          },
+          false,
+          false,
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "color": "#6B7280",
+              "fontSize": 12,
+              "fontWeight": "700",
+            },
+            false,
+          ]
+        }
+      >
+        Like
+         
+        42
+      </Text>
+    </View>
     <Text
       style={
         {
           "color": "#6B7280",
           "fontSize": 12,
+          "fontWeight": "700",
         }
       }
     >
-      ♥ 
-      42
-    </Text>
-    <Text
-      style={
-        {
-          "color": "#6B7280",
-          "fontSize": 12,
-        }
-      }
-    >
-      ◎ 
+      Tips 
       100
     </Text>
   </View>
