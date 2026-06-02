@@ -368,6 +368,17 @@ export class LinkoraClient {
   }
 
   /**
+   * Builds an XDR envelope for setting a user profile
+   * @param user - The user's Stellar address
+   * @param username - The desired username (3–32 alphanumeric or _ characters)
+   * @param creatorToken - The creator token contract address
+   * @returns The base64-encoded XDR envelope
+   */
+  setProfile(user: string, username: string, creatorToken: string): string {
+    return this.buildTx("set_profile", scvAddress(user), scvString(username), scvAddress(creatorToken));
+  }
+
+  /**
    * Builds an XDR envelope for blocking a user
    * @param blocker - The blocker's Stellar address
    * @param blocked - The address to block
