@@ -27,6 +27,9 @@ pub enum StorageKey {
     FollowingPos(Address, Address), // persistent: (follower, followee) -> u32 position in idx
     FollowersPos(Address, Address), // persistent: (followee, follower) -> u32 position in idx
     GraphMigrated(Address),         // persistent: user -> bool (migration tracking)
+    // ── End-to-end encrypted direct messages ──────────────────────────────
+    DmPublicKey(Address),      // persistent: user -> X25519 public key for E2EE DMs
+}
 }
 
 // ── Instance-storage key constants (small scalars, not contracttype) ──────────
@@ -294,6 +297,14 @@ pub struct PoolThresholdUpdatedEvent {
 
 #[contractevent]
 #[derive(Clone)]
+pub struct DmKeyPublishedEvent {
+    #[topic]
+    pub user: Address,
+    pub public_key: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone)]
 pub struct FeeUpdatedEvent {
     #[topic]
     pub name: Symbol,
@@ -492,6 +503,35 @@ impl LinkoraContract {
     pub fn get_address_by_username(env: Env, username: String) -> Option<Address> {
         let key = StorageKey::UsernameIndex(username);
         let result: Option<Address> = env.storage().persistent().get(&key);
+        if result.is_some() {
+            Self::bump(&env, &key);
+        }
+        result
+    }
+
+    // ── DM Key Management ─────────────────────────────────────────────────────
+
+    /// Publish a user's X25519 public key for encrypted direct messages.
+    /// This key is separate from the Stellar signing key for security reasons.
+    pub fn publish_dm_key(env: Env, user: Address, x25519_pubkey: BytesN<32>) {
+        Self::bump_instance(&env);
+        user.require_auth();
+        
+        let key = StorageKey::DmPublicKey(user.clone());
+        env.storage().persistent().set(&key, &x25519_pubkey);
+        Self::bump(&env, &key);
+        
+        DmKeyPublishedEvent {
+            user,
+            public_key: x25519_pubkey,
+        }.publish(&env);
+    }
+
+    /// Retrieve a user's X25519 public key for encrypted direct messages.
+    /// Returns None if the user has not published a DM key.
+    pub fn get_dm_key(env: Env, user: Address) -> Option<BytesN<32>> {
+        let key = StorageKey::DmPublicKey(user);
+        let result: Option<BytesN<32>> = env.storage().persistent().get(&key);
         if result.is_some() {
             Self::bump(&env, &key);
         }
