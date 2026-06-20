@@ -31,10 +31,15 @@ export async function connectWallet(page: Page): Promise<void> {
   const hamburger = page.getByRole('button', { name: /toggle navigation menu/i }).first();
   if (await hamburger.isVisible().catch(() => false)) {
     await hamburger.click();
+    await page.waitForTimeout(500);
   }
 
   // Prefer data-testid; fall back to role+name for robustness.
-  const connectBtn = page.locator('[data-testid="connect-wallet"]').first();
+  let connectBtn = page.locator('[data-testid="connect-wallet"]').first();
+  if (!(await connectBtn.isVisible().catch(() => false))) {
+    connectBtn = page.getByRole('button', { name: /connect wallet|connect/i }).first();
+  }
+
   await expect(connectBtn).toBeVisible({ timeout: 10000 });
   await connectBtn.click();
 
