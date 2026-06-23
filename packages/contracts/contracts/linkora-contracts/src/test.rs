@@ -3299,7 +3299,7 @@ fn test_pay_rent_extends_ttl() {
 }
 
 #[test]
-#[should_panic(expected = "graph entry expired — pay rent")]
+#[should_panic(expected = "graph entry expired - pay rent")]
 fn test_follow_panics_on_expired_graph_keys() {
     let env = Env::default();
     env.mock_all_auths();
@@ -3333,9 +3333,11 @@ fn test_get_rent_expiry_minimum() {
 
     // Modify the TTL of followers count key to be lower
     let followers_count_key = StorageKey::FollowersCount(user.clone());
-    env.storage()
-        .persistent()
-        .extend_ttl(&followers_count_key, 100_000, 100_000);
+    env.as_contract(&client.address, || {
+        env.storage()
+            .persistent()
+            .extend_ttl(&followers_count_key, 100_000, 100_000);
+    });
 
     let expected_expiry = env.ledger().sequence() + 100_000;
     assert_eq!(client.get_rent_expiry(&user), expected_expiry);

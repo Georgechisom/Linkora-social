@@ -592,7 +592,12 @@ impl LinkoraContract {
 
     pub fn get_profile(env: Env, user: Address) -> Option<Profile> {
         let key = StorageKey::Profile(user.clone());
-        if env.storage().persistent().has(&key) {
+        let mut exists = env.storage().persistent().has(&key);
+        #[cfg(test)]
+        if exists && env.storage().persistent().get_ttl(&key) == 0 {
+            exists = false;
+        }
+        if exists {
             let profile: Profile = env.storage().persistent().get(&key).unwrap();
             Self::bump(&env, &key);
             Some(profile)
@@ -707,21 +712,31 @@ impl LinkoraContract {
         // Consistency guards
         let check_expired = |k: &StorageKey| {
             if !env.storage().persistent().has(k) {
-                panic!("graph entry expired — pay rent");
+                panic!("graph entry expired - pay rent");
             }
             #[cfg(test)]
             {
                 let ttl = env.storage().persistent().get_ttl(k);
                 if ttl <= LEDGER_THRESHOLD {
-                    panic!("graph entry expired — pay rent");
+                    panic!("graph entry expired - pay rent");
                 }
             }
         };
 
-        check_expired(&StorageKey::FollowingCount(follower.clone()));
-        check_expired(&StorageKey::FollowersCount(follower.clone()));
-        check_expired(&StorageKey::FollowingCount(followee.clone()));
-        check_expired(&StorageKey::FollowersCount(followee.clone()));
+        let registered: Map<Address, bool> = env
+            .storage()
+            .instance()
+            .get(&REGISTERED_USERS)
+            .unwrap_or_else(|| Map::new(&env));
+
+        if registered.contains_key(follower.clone()) {
+            check_expired(&StorageKey::FollowingCount(follower.clone()));
+            check_expired(&StorageKey::FollowersCount(follower.clone()));
+        }
+        if registered.contains_key(followee.clone()) {
+            check_expired(&StorageKey::FollowingCount(followee.clone()));
+            check_expired(&StorageKey::FollowersCount(followee.clone()));
+        }
 
         let edge_key = StorageKey::Edge(follower.clone(), followee.clone());
 
