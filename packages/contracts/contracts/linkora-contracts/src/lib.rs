@@ -592,11 +592,10 @@ impl LinkoraContract {
 
     pub fn get_profile(env: Env, user: Address) -> Option<Profile> {
         let key = StorageKey::Profile(user.clone());
-        let mut exists = env.storage().persistent().has(&key);
         #[cfg(test)]
-        if exists && env.storage().persistent().get_ttl(&key) == 0 {
-            exists = false;
-        }
+        let exists = env.storage().persistent().has(&key) && env.storage().persistent().get_ttl(&key) > 0;
+        #[cfg(not(test))]
+        let exists = env.storage().persistent().has(&key);
         if exists {
             let profile: Profile = env.storage().persistent().get(&key).unwrap();
             Self::bump(&env, &key);
