@@ -250,6 +250,9 @@ importers:
       "@playwright/test":
         specifier: ^1.45.0
         version: 1.60.0
+      "@stellar/freighter-api":
+        specifier: ^2.0.0
+        version: 2.0.0
       "@testing-library/jest-dom":
         specifier: ^6.1.5
         version: 6.9.1
@@ -17623,7 +17626,7 @@ snapshots:
       "@typescript-eslint/parser": 7.18.0(eslint@8.57.1)(typescript@5.9.3)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1)
       eslint-plugin-import: 2.32.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
