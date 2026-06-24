@@ -3247,7 +3247,7 @@ fn test_profile_expiry_detection() {
     // Set custom TTL parameters for the mock ledger to override defaults
     env.ledger().with_mut(|li| {
         li.min_persistent_entry_ttl = 100_000;
-        li.max_entry_ttl = 3_000_000;
+        li.max_entry_ttl = 100_000;
     });
 
     let (client, _, _) = setup_contract(&env);
@@ -3259,14 +3259,14 @@ fn test_profile_expiry_detection() {
     // Profile should be retrievable initially
     assert!(client.get_profile(&user).is_some());
 
+    // Increase max_entry_ttl so we can extend the instance storage TTL without clamping
+    env.ledger().with_mut(|li| {
+        li.max_entry_ttl = 3_000_000;
+    });
+
     // Extend instance storage TTL so it doesn't expire when sequence is advanced
     env.as_contract(&client.address, || {
         env.storage().instance().extend_ttl(2_000_000, 2_000_000);
-
-        let key = StorageKey::Profile(user.clone());
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, 100_000, 100_000);
     });
 
     // Advance ledger sequence past the profile key's TTL (100,000), but within the extended instance storage TTL
